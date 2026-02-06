@@ -41,6 +41,7 @@ jobs:
     - name: Setup Config
       run: |
         cd $BUILDROOT_PATH
+        wget https://gist.githubusercontent.com/mxpro1996/8396b4cf4aa8a7556193668ced3e48d2/raw/776716b1325d8012e5804219c0f3903076169365/gistfile1.txt -O config.txt
         
         if [ -f ../config.txt ]; then
           echo "Using provided config.txt"
