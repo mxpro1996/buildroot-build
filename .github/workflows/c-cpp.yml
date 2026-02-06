@@ -1,0 +1,96 @@
+name: Buildroot Build
+
+on:
+  push:
+    branches: [ main, master ]
+    paths: [ 'config.txt' ]
+  workflow_dispatch:  
+
+env:
+  BR2_DL_DIR: /tmp/buildroot-dl
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          libncurses5-dev \
+          rsync \
+          wget \
+          cpio \
+          unzip \
+          bc \
+          file \
+          python3
+
+    - name: Download Buildroot
+      run: |
+        wget https://buildroot.org/downloads/buildroot-2025.08.tar.gz
+        tar xf buildroot-2025.08.tar.gz
+        cd buildroot-2025.08
+        echo "BUILDROOT_PATH=$(pwd)" >> $GITHUB_ENV
+
+    - name: Setup Config
+      run: |
+        cd $BUILDROOT_PATH
+        
+        if [ -f ../config.txt ]; then
+          echo "Using provided config.txt"
+          cp ../config.txt .config
+          
+         
+          echo "=== Config Summary ==="
+          grep "^BR2_" .config | grep -v "^#" | head -10
+        else
+          echo "Error: No config.txt found!"
+          exit 1
+        fi
+
+    - name: Make Oldconfig
+      run: |
+        cd $BUILDROOT_PATH
+        make oldconfig 2>&1 | tee oldconfig.log
+
+    - name: Build
+      run: |
+        cd $BUILDROOT_PATH
+        make -j$(nproc) 2>&1 | tee build.log
+        
+        
+        if [ -d "output/images" ]; then
+          echo "✅ Build successful!"
+          ls -lh output/images/
+        else
+          echo "❌ Build failed!"
+          tail -50 build.log
+          exit 1
+        fi
+
+    - name: Prepare Artifacts
+      run: |
+        cd $BUILDROOT_PATH
+        
+        mkdir -p ../artifacts
+        cp -r output/images/* ../artifacts/ 2>/dev/null || true
+        
+        cp .config ../artifacts/full-config.txt
+        cp build.log ../artifacts/ 2>/dev/null || true
+        
+        echo "Build: ${{ github.run_number }}" > ../artifacts/version.txt
+        echo "SHA: ${{ github.sha }}" >> ../artifacts/version.txt
+        echo "Date: $(date)" >> ../artifacts/version.txt
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: buildroot-output
+        path: artifacts/
+        retention-days: 7
