@@ -33,9 +33,9 @@ jobs:
 
     - name: Download Buildroot
       run: |
-        wget https://buildroot.org/downloads/buildroot-2025.08.tar.gz
-        tar xf buildroot-2025.08.tar.gz
-        cd buildroot-2025.08
+        wget https://buildroot.org/downloads/buildroot-2025.02.tar.gz
+        tar xf buildroot-2025.02.tar.gz
+        cd buildroot-2025.02
         echo "BUILDROOT_PATH=$(pwd)" >> $GITHUB_ENV
 
     - name: Setup Config
@@ -54,11 +54,6 @@ jobs:
           echo "Error: No config.txt found!"
           exit 1
         fi
-
-    - name: Make Oldconfig
-      run: |
-        cd $BUILDROOT_PATH
-        make oldconfig 2>&1 | tee oldconfig.log
 
     - name: Build
       run: |
