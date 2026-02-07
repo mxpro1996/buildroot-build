@@ -3,7 +3,6 @@ name: Buildroot Build (Optimized)
 on:
   push:
     branches: [ main, master ]
-    paths: [ 'config.txt' ]
   workflow_dispatch:
     inputs:
       clean_cache:
@@ -106,7 +105,7 @@ jobs:
     - name: Display Cache Status
       run: |
         echo "=== Cache Status ==="
-        if steps.cache-toolchain.outputs.cache-hit == 'true'; then
+        if [ "${{ steps.cache-toolchain.outputs.cache-hit }}" = "true" ]; then
           echo "✅ Matched, save time"
           echo "Cache size:"
           du -sh $BUILDROOT_PATH/output/host 2>/dev/null | awk '{print "  Host tools:", $0}' || echo "  Host tools: Not found"
