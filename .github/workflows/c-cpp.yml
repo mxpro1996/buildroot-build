@@ -54,7 +54,6 @@ jobs:
 
     - name: Get Buildroot
       run: |
-        # 直接从镜像下载，避免缓存问题
         wget -q https://buildroot.org/downloads/buildroot-$BUILDROOT_VERSION.tar.gz
         tar xf buildroot-$BUILDROOT_VERSION.tar.gz
         cd buildroot-$BUILDROOT_VERSION
