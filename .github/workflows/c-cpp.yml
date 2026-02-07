@@ -1,13 +1,21 @@
-name: Buildroot Build
+name: Buildroot Build (Optimized)
 
 on:
   push:
     branches: [ main, master ]
     paths: [ 'config.txt' ]
-  workflow_dispatch:  
+  workflow_dispatch:
+    inputs:
+      clean_cache:
+        description: 'Clean all caches'
+        required: false
+        default: 'false'
 
 env:
   BR2_DL_DIR: /tmp/buildroot-dl
+  BUILDROOT_VERSION: 2025.02
+  CACHE_KEY_PREFIX: buildroot-${{ github.repository }}
+  CACHE_VERSION: v2
 
 jobs:
   build:
@@ -16,78 +24,228 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
 
-    - name: Install Dependencies
+    - name: Clean Cache (Optional)
+      if: ${{ github.event.inputs.clean_cache == 'true' }}
+      run: |
+        echo "Cleaning all caches as requested..."
+
+    - name: Install Minimal Dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
           build-essential \
           libncurses5-dev \
-          rsync \
-          wget \
-          cpio \
-          unzip \
-          bc \
           file \
-          python3
+          python3 \
+          ccache
+        echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
 
-    - name: Download Buildroot
+    - name: Setup ccache
+      uses: actions/cache@v4
+      with:
+        path: ~/.ccache
+        key: ${{ env.CACHE_KEY_PREFIX }}-ccache-${{ env.CACHE_VERSION }}-${{ hashFiles('config.txt') }}
+        restore-keys: |
+          ${{ env.CACHE_KEY_PREFIX }}-ccache-${{ env.CACHE_VERSION }}-
+          ${{ env.CACHE_KEY_PREFIX }}-ccache-
+
+    - name: Get Buildroot
       run: |
-        wget https://buildroot.org/downloads/buildroot-2025.02.tar.gz
-        tar xf buildroot-2025.02.tar.gz
-        cd buildroot-2025.02
+        # 直接从镜像下载，避免缓存问题
+        wget -q https://buildroot.org/downloads/buildroot-$BUILDROOT_VERSION.tar.gz
+        tar xf buildroot-$BUILDROOT_VERSION.tar.gz
+        cd buildroot-$BUILDROOT_VERSION
         echo "BUILDROOT_PATH=$(pwd)" >> $GITHUB_ENV
+        echo "BUILDROOT_DIR=$(pwd)" >> $GITHUB_ENV
 
-    - name: Setup Config
+    - name: Cache Source Downloads (dl/)
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.BUILDROOT_PATH }}/dl
+        key: ${{ env.CACHE_KEY_PREFIX }}-dl-${{ env.CACHE_VERSION }}-${{ hashFiles('config.txt') }}
+        restore-keys: |
+          ${{ env.CACHE_KEY_PREFIX }}-dl-${{ env.CACHE_VERSION }}-
+          ${{ env.CACHE_KEY_PREFIX }}-dl-
+
+    - name: Setup Configuration
       run: |
         cd $BUILDROOT_PATH
-        # wget https://gist.githubusercontent.com/mxpro1996/8396b4cf4aa8a7556193668ced3e48d2/raw/776716b1325d8012e5804219c0f3903076169365/gistfile1.txt -O config.txt
-        wget https://gist.githubusercontent.com/mxpro1996/8396b4cf4aa8a7556193668ced3e48d2/raw/c3077515f8315656a683e53510917e57236c20df/gistfile1.txt -O config.txt
         
-        if [ -f config.txt ]; then
-          echo "Using provided config.txt"
-          cp config.txt .config
-          
-         
-          echo "=== Config Summary ==="
-          grep "^BR2_" .config | grep -v "^#" | head -10
+        if [ -f "../config.txt" ]; then
+          cp ../config.txt .config
+          echo "Using local config.txt"
         else
-          echo "Error: No config.txt found!"
-          exit 1
+          wget -q https://gist.githubusercontent.com/mxpro1996/8396b4cf4aa8a7556193668ced3e48d2/raw/c3077515f8315656a683e53510917e57236c20df/gistfile1.txt -O .config
+          echo "Using remote config.txt"
+        fi
+        
+        echo "BR2_CCACHE=y" >> .config
+        echo "BR2_CCACHE_DIR=\"$HOME/.ccache\"" >> .config
+        echo "BR2_CCACHE_INITIAL_SETUP=\"\"" >> .config
+        echo "BR2_CCACHE_USE_BASEDIR=y" >> .config
+        
+        echo "=== Config Summary ==="
+        grep "^BR2_" .config | grep -v "^#" | grep -E "(CCACHE|VERSION|TARGET_|ARCH)" | head -15
+
+    - name: Cache Complete Toolchain and Host Build
+      id: cache-toolchain
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ env.BUILDROOT_PATH }}/output/host
+          ${{ env.BUILDROOT_PATH }}/output/build/host-*
+          ${{ env.BUILDROOT_PATH }}/output/build/linux-*
+          ${{ env.BUILDROOT_PATH }}/output/build/linux-headers-*
+        key: ${{ env.CACHE_KEY_PREFIX }}-toolchain-${{ env.CACHE_VERSION }}-${{ hashFiles('config.txt') }}
+        restore-keys: |
+          ${{ env.CACHE_KEY_PREFIX }}-toolchain-${{ env.CACHE_VERSION }}-
+          ${{ env.CACHE_KEY_PREFIX }}-toolchain-
+
+    - name: Display Cache Status
+      run: |
+        echo "=== Cache Status ==="
+        if steps.cache-toolchain.outputs.cache-hit == 'true'; then
+          echo "✅ Matched, save time"
+          echo "Cache size:"
+          du -sh $BUILDROOT_PATH/output/host 2>/dev/null | awk '{print "  Host tools:", $0}' || echo "  Host tools: Not found"
+          du -sh $BUILDROOT_PATH/output/build/host-* 2>/dev/null | head -1 | awk '{print "  Host builds:", $0}' || echo "  Host builds: Not found"
+        else
+          echo "⚠️  Cache mismatch, entirely rebuild"
+          echo "ETA: 30~60 minutes"
         fi
 
-    - name: Build
+    - name: Cache Target Packages
+      if: steps.cache-toolchain.outputs.cache-hit == 'true'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ env.BUILDROOT_PATH }}/output/target
+          ${{ env.BUILDROOT_PATH }}/output/build/*/.stamp_built
+          ${{ env.BUILDROOT_PATH }}/output/build/*/.stamp_target_installed
+          ${{ env.BUILDROOT_PATH }}/output/build/*/.stamp_staging_installed
+        key: ${{ env.CACHE_KEY_PREFIX }}-target-${{ env.CACHE_VERSION }}-${{ hashFiles('config.txt') }}-${{ github.sha }}
+        restore-keys: |
+          ${{ env.CACHE_KEY_PREFIX }}-target-${{ env.CACHE_VERSION }}-${{ hashFiles('config.txt') }}-
+          ${{ env.CACHE_KEY_PREFIX }}-target-${{ env.CACHE_VERSION }}-
+
+    - name: Build with Smart Parallelism
       run: |
         cd $BUILDROOT_PATH
-        make -j$(nproc) 2>&1 | tee build.log
         
+        export CCACHE_DIR="$HOME/.ccache"
+        export CCACHE_MAXSIZE=5G
+        export CCACHE_COMPRESS=1
+        export CCACHE_COMPRESSLEVEL=6
+        export CCACHE_SLOPPINESS=file_macro,include_file_mtime,include_file_ctime,time_macros
         
-        if [ -d "output/images" ]; then
-          echo "✅ Build successful!"
+        if [ "${{ steps.cache-toolchain.outputs.cache-hit }}" = "true" ]; then
+          JOBS=$(($(nproc) * 3))  
+          echo "🚀 Cached toolchain, -j$JOBS"
+        else
+          JOBS=$(nproc) 
+          echo "🐢 First Toolchain, -j$JOBS"
+        fi
+        
+        echo "=== CCache Stats Before ==="
+        ccache -s || true
+        
+        echo "🛠️  START..."
+        START_TIME=$(date +%s)
+        
+        if [ "${{ steps.cache-toolchain.outputs.cache-hit }}" = "true" ]; then
+          echo "Skipping toolchain，for target packages..."
+          make world -j$JOBS 2>&1 | tee build.log
+        else
+          echo "With toolchain rebuilding..."
+          make -j$JOBS 2>&1 | tee build.log
+        fi
+        
+        END_TIME=$(date +%s)
+        DURATION=$((END_TIME - START_TIME))
+        
+        echo "⏱️ Spend: $((DURATION / 60))m$((DURATION % 60))s"
+        
+        echo "=== CCache Stats After ==="
+        ccache -s || true
+
+    - name: Check Build Results
+      run: |
+        cd $BUILDROOT_PATH
+        
+        if [ -d "output/images" ] && [ "$(find output/images -type f 2>/dev/null | wc -l)" -gt 0 ]; then
+          echo "✅ Build OK！"
           ls -lh output/images/
+          
+          for img in output/images/*; do
+            if [ -f "$img" ]; then
+              size=$(du -h "$img" | cut -f1)
+              echo "  $(basename $img): $size"
+            fi
+          done
         else
-          echo "❌ Build failed!"
+          echo "❌ No Image was generated!!!"
+          
+          echo "=== backtrace ==="
           tail -50 build.log
+          
+          find output/build -name ".stamp_*_failed" -type f | head -10 | while read f; do
+            pkg_dir=$(dirname "$f")
+            pkg_name=$(basename "$pkg_dir")
+            echo "Failed at: $pkg_name"
+          done
+          
           exit 1
         fi
 
-    - name: Prepare Artifacts
+    - name: Prepare Optimized Artifacts
       run: |
         cd $BUILDROOT_PATH
         
         mkdir -p ../artifacts
-        cp -r output/images/* ../artifacts/ 2>/dev/null || true
         
-        cp .config ../artifacts/full-config.txt
-        cp build.log ../artifacts/ 2>/dev/null || true
+        if [ -d "output/images" ]; then
+          tar czf ../artifacts/images.tar.gz -C output/images .
+          ls -lh output/images/* > ../artifacts/images-list.txt
+        fi
         
-        echo "Build: ${{ github.run_number }}" > ../artifacts/version.txt
-        echo "SHA: ${{ github.sha }}" >> ../artifacts/version.txt
-        echo "Date: $(date)" >> ../artifacts/version.txt
+        cp .config ../artifacts/buildroot.config
+        
+        if [ -f "build.log" ]; then
+          tail -5000 build.log > ../artifacts/build.log.tail
+          grep -i "error\|warning\|failed\|undefined" build.log | head -100 > ../artifacts/errors-summary.log
+        fi
+        
+        {
+          echo "=== Build Report ==="
+          echo "Build Number: ${{ github.run_number }}"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Build Date: $(date)"
+          echo "Buildroot Version: $BUILDROOT_VERSION"
+          echo "Cache Hit: ${{ steps.cache-toolchain.outputs.cache-hit }}"
+          echo "CCache Stats:"
+          ccache -s 2>/dev/null | grep -E "cache hit|files in cache" || true
+          echo ""
+          echo "=== Final Images ==="
+          find output/images -type f -exec ls -lh {} \; 2>/dev/null || echo "No images found"
+        } > ../artifacts/build-report.txt
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: buildroot-output
+        name: buildroot-output-${{ github.run_number }}-${{ github.sha_short }}
         path: artifacts/
-        retention-days: 7
+        retention-days: 14
+        compression-level: 9
+
+    - name: Upload Full Logs (on failure)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: buildroot-failure-details-${{ github.run_number }}
+        path: |
+          ${{ env.BUILDROOT_PATH }}/build.log
+          ${{ env.BUILDROOT_PATH }}/.config
+        retention-days: 30
