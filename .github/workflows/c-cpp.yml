@@ -116,20 +116,6 @@ jobs:
           echo "ETA: 30~60 minutes"
         fi
 
-    - name: Cache Target Packages
-      if: steps.cache-toolchain.outputs.cache-hit == 'true'
-      uses: actions/cache@v4
-      with:
-        path: |
-          ${{ env.BUILDROOT_PATH }}/output/target
-          ${{ env.BUILDROOT_PATH }}/output/build/*/.stamp_built
-          ${{ env.BUILDROOT_PATH }}/output/build/*/.stamp_target_installed
-          ${{ env.BUILDROOT_PATH }}/output/build/*/.stamp_staging_installed
-        key: ${{ env.CACHE_KEY_PREFIX }}-target-${{ env.CACHE_VERSION }}-${{ hashFiles('config.txt') }}-${{ github.sha }}
-        restore-keys: |
-          ${{ env.CACHE_KEY_PREFIX }}-target-${{ env.CACHE_VERSION }}-${{ hashFiles('config.txt') }}-
-          ${{ env.CACHE_KEY_PREFIX }}-target-${{ env.CACHE_VERSION }}-
-
     - name: Build with Smart Parallelism
       run: |
         cd $BUILDROOT_PATH
@@ -198,7 +184,31 @@ jobs:
           
           exit 1
         fi
-
+    
+    - name: Prepare Toolchain Artifacts
+      if: success()
+      run: |
+        cd $BUILDROOT_PATH
+        mkdir -p ../toolchain-artifacts
+        tar czf ../toolchain-artifacts/cross-compiler.tar.gz -C output/host .
+        {
+          echo "Buildroot Toolchain Info"
+          echo "========================"
+          echo "Version: $BUILDROOT_VERSION"
+          echo "Build Date: $(date)"
+          echo "Commit SHA: ${{ github.sha }}"
+          echo "Target Arch: $(grep '^BR2_ARCH=' .config | cut -d= -f2 | tr -d '\"')"
+          echo "GCC Version: $(output/host/bin/*gcc --version | head -1)"
+          echo "Linux Headers: $(grep '^BR2_KERNEL_HEADERS_' .config | cut -d= -f2 | tr -d '\"')"
+          echo ""
+          echo "   export PATH=/opt/toolchain/bin:\$PATH"
+          echo "   export CROSS_COMPILE=arm-buildroot-linux-gnueabihf-"
+          echo ""
+          echo "   make BR2_EXTERNAL=/path/to/your/external toolchain"
+        } > ../toolchain-artifacts/README.txt
+        
+    
+    
     - name: Prepare Optimized Artifacts
       run: |
         cd $BUILDROOT_PATH
@@ -238,6 +248,14 @@ jobs:
         path: artifacts/
         retention-days: 14
         compression-level: 9
+
+    - name: Upload 2-Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: buildroot-output-${{ github.run_number }}-${{ github.sha_short }}
+        path: toolchain-artifacts/
+        retention-days: 14
+        compression-level: 9        
 
     - name: Upload Full Logs (on failure)
       if: failure()
