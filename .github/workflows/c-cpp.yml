@@ -76,7 +76,7 @@ jobs:
           cp ../config.txt .config
           echo "Using local config.txt"
         else
-          wget -q https://gist.githubusercontent.com/mxpro1996/8396b4cf4aa8a7556193668ced3e48d2/raw/c3077515f8315656a683e53510917e57236c20df/gistfile1.txt -O .config
+          wget -q https://gist.githubusercontent.com/mxpro1996/8396b4cf4aa8a7556193668ced3e48d2/raw/f398755c7d8525cd5abd81b371f12e3b8c623c9c/gistfile1.txt -O .config
           echo "Using remote config.txt"
         fi
         
