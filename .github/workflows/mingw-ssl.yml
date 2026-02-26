@@ -107,7 +107,7 @@ jobs:
         zip -r ../mingw-${{ matrix.arch }}-openssl-curl.zip *
         
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: mingw-${{ matrix.arch }}-openssl-curl
         path: mingw-${{ matrix.arch }}-openssl-curl.zip
