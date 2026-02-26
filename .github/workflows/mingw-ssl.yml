@@ -1,0 +1,112 @@
+name: Build OpenSSL and libcurl for MinGW
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [i686, x86_64]  # 32-bit and 64-bit builds
+        include:
+          - arch: i686
+            host: i686-w64-mingw32
+            prefix: /usr/i686-w64-mingw32
+          - arch: x86_64
+            host: x86_64-w64-mingw32
+            prefix: /usr/x86_64-w64-mingw32
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          mingw-w64 \
+          mingw-w64-tools \
+          autoconf \
+          automake \
+          libtool \
+          pkg-config \
+          make \
+          wget \
+          unzip
+          
+    - name: Create build directory
+      run: mkdir -p ${{ github.workspace }}/build
+      
+    - name: Build OpenSSL 1.1.1
+      run: |
+        cd ${{ github.workspace }}/build
+        wget https://www.openssl.org/source/openssl-1.1.1q.tar.gz
+        tar xzf openssl-1.1.1q.tar.gz
+        cd openssl-1.1.1q
+        
+        export CROSS_COMPILE="${{ matrix.host }}-"
+        export CC="${CROSS_COMPILE}gcc"
+        export AR="${CROSS_COMPILE}ar"
+        export RANLIB="${CROSS_COMPILE}ranlib"
+        
+        if [ "${{ matrix.arch }}" = "i686" ]; then
+          ./Configure mingw --prefix=${{ github.workspace }}/install/openssl
+        else
+          ./Configure mingw64 --prefix=${{ github.workspace }}/install/openssl
+        fi
+        
+        make -j$(nproc)
+        make install
+        
+    - name: Build libcurl 7.63.0
+      run: |
+        cd ${{ github.workspace }}/build
+        wget https://curl.se/download/curl-7.63.0.tar.gz
+        tar xzf curl-7.63.0.tar.gz
+        cd curl-7.63.0
+        
+        export HOST="${{ matrix.host }}"
+        export CC="${{ matrix.host }}-gcc"
+        export CXX="${{ matrix.host }}-g++"
+        export AR="${{ matrix.host }}-ar"
+        export RANLIB="${{ matrix.host }}-ranlib"
+        export PKG_CONFIG_PATH="${{ github.workspace }}/install/openssl/lib/pkgconfig"
+        
+        ./configure \
+          --host=$HOST \
+          --prefix=${{ github.workspace }}/install/curl \
+          --with-ssl=${{ github.workspace }}/install/openssl \
+          --enable-static \
+          --disable-shared \
+          --disable-dict \
+          --disable-gopher \
+          --disable-imap \
+          --disable-pop3 \
+          --disable-rtsp \
+          --disable-smtp \
+          --disable-telnet \
+          --disable-tftp \
+          --disable-smb \
+          --without-libidn2 \
+          --without-librtmp \
+          --without-libpsl \
+          --without-libssh2 \
+          --without-nghttp2
+          
+        make -j$(nproc)
+        make install
+        
+    - name: Create package
+      run: |
+        cd ${{ github.workspace }}/install
+        zip -r ../mingw-${{ matrix.arch }}-openssl-curl.zip *
+        
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: mingw-${{ matrix.arch }}-openssl-curl
+        path: mingw-${{ matrix.arch }}-openssl-curl.zip
