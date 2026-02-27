@@ -53,6 +53,7 @@ jobs:
         export CC="${CROSS_COMPILE}gcc"
         export AR="${CROSS_COMPILE}ar"
         export RANLIB="${CROSS_COMPILE}ranlib"
+        export CROSS_COMPILE=
         
         if [ "${{ matrix.arch }}" = "i686" ]; then
           ./Configure mingw --prefix=${{ github.workspace }}/install/openssl
