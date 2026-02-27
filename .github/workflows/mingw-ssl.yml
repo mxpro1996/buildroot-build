@@ -16,10 +16,10 @@ jobs:
         include:
           - arch: i686
             host: i686-w64-mingw32-posix
-            prefix: /usr/i686-w64-mingw32-posix
+            prefix: /usr/i686-w64-mingw32
           - arch: x86_64
             host: x86_64-w64-mingw32-posix
-            prefix: /usr/x86_64-w64-mingw32-posix
+            prefix: /usr/x86_64-w64-mingw32
     
     steps:
     - name: Checkout code
@@ -31,6 +31,7 @@ jobs:
         sudo apt-get install -y \
           mingw-w64 \
           mingw-w64-tools \
+          binutils-mingw-w64 \
           autoconf \
           automake \
           libtool \
@@ -53,6 +54,7 @@ jobs:
         export CC="${CROSS_COMPILE}gcc"
         export AR="${CROSS_COMPILE}ar"
         export RANLIB="${CROSS_COMPILE}ranlib"
+        export WINDRES="${CROSS_COMPILE}windres"
         export CROSS_COMPILE=
         
         if [ "${{ matrix.arch }}" = "i686" ]; then
