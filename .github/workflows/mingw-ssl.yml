@@ -1,9 +1,7 @@
-name: Build OpenSSL and libcurl for MinGW
+name: Build OpenSSL, Curl, Iconv and ZBar for MinGW
 
 on:
   push:
-    branches: [ master ]
-  pull_request:
     branches: [ master ]
   workflow_dispatch:
 
@@ -12,37 +10,41 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: [i686, x86_64]  # 32-bit and 64-bit builds
+        arch: [i686, x86_64]
         include:
           - arch: i686
             host: i686-w64-mingw32
-            prefix: /usr/i686-w64-mingw32
           - arch: x86_64
             host: x86_64-w64-mingw32
-            prefix: /usr/x86_64-w64-mingw32
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
-      
-    - name: Install dependencies
+
+    - name: Install Cross-Compiler
       run: |
         sudo apt-get update
-        sudo apt-get install -y \
-          mingw-w64 \
-          mingw-w64-tools \
-          binutils-mingw-w64 \
-          autoconf \
-          automake \
-          libtool \
-          pkg-config \
-          make \
-          wget \
-          unzip
-          
-    - name: Create build directory
-      run: mkdir -p ${{ github.workspace }}/build
-      
+        sudo apt-get install -y mingw-w64 binutils-mingw-w64 autoconf automake libtool pkg-config make wget unzip
+
+    - name: Create build and install directories
+      run: |
+        mkdir -p ${{ github.workspace }}/build
+        mkdir -p ${{ github.workspace }}/install
+
+    - name: Build libiconv 1.17
+      run: |
+        cd ${{ github.workspace }}/build
+        wget https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.17.tar.gz
+        tar xzf libiconv-1.17.tar.gz
+        cd libiconv-1.17
+        ./configure \
+          --host=${{ matrix.host }} \
+          --prefix=${{ github.workspace }}/install/deps \
+          --enable-static --disable-shared
+        make -j$(nproc)
+        make install
+
+    # 2. Build OpenSSL 1.1.1
     - name: Build OpenSSL 1.1.1
       run: |
         cd ${{ github.workspace }}/build
@@ -50,67 +52,64 @@ jobs:
         tar xzf openssl-1.1.1q.tar.gz
         cd openssl-1.1.1q
         
-        export CROSS_COMPILE="${{ matrix.host }}-"
-        export CC="${CROSS_COMPILE}gcc"
-        export AR="${CROSS_COMPILE}ar"
-        export RANLIB="${CROSS_COMPILE}ranlib"
-        export WINDRES="${CROSS_COMPILE}windres"
-        export CROSS_COMPILE=
+        export CC=${{ matrix.host }}-gcc
+        export AR=${{ matrix.host }}-ar
+        export RANLIB=${{ matrix.host }}-ranlib
+        export WINDRES=${{ matrix.host }}-windres
         
         if [ "${{ matrix.arch }}" = "i686" ]; then
-          ./Configure mingw --prefix=${{ github.workspace }}/install/openssl
+          ./Configure mingw --prefix=${{ github.workspace }}/install/deps
         else
-          ./Configure mingw64 --prefix=${{ github.workspace }}/install/openssl
+          ./Configure mingw64 --prefix=${{ github.workspace }}/install/deps
         fi
-        
         make -j$(nproc)
-        make install
-        
-    - name: Build libcurl 7.63.0
+        make install_sw
+
+    # 3. Build libcurl
+    - name: Build libcurl 7.85.0
       run: |
         cd ${{ github.workspace }}/build
-        wget https://curl.se/download/curl-7.63.0.tar.gz
-        tar xzf curl-7.63.0.tar.gz
-        cd curl-7.63.0
-        
-        export HOST="${{ matrix.host }}"
-        export CC="${{ matrix.host }}-gcc"
-        export CXX="${{ matrix.host }}-g++"
-        export AR="${{ matrix.host }}-ar"
-        export RANLIB="${{ matrix.host }}-ranlib"
-        export PKG_CONFIG_PATH="${{ github.workspace }}/install/openssl/lib/pkgconfig"
-        
+        wget https://curl.se/download/curl-7.85.0.tar.gz
+        tar xzf curl-7.85.0.tar.gz
+        cd curl-7.85.0
         ./configure \
-          --host=$HOST \
-          --prefix=${{ github.workspace }}/install/curl \
-          --with-ssl=${{ github.workspace }}/install/openssl \
-          --enable-static \
-          --disable-shared \
-          --disable-dict \
-          --disable-gopher \
-          --disable-imap \
-          --disable-pop3 \
-          --disable-rtsp \
-          --disable-smtp \
-          --disable-telnet \
-          --disable-tftp \
-          --disable-smb \
-          --without-libidn2 \
-          --without-librtmp \
-          --without-libpsl \
-          --without-libssh2 \
-          --without-nghttp2
-          
+          --host=${{ matrix.host }} \
+          --prefix=${{ github.workspace }}/install/deps \
+          --with-openssl=${{ github.workspace }}/install/deps \
+          --with-libiconv-prefix=${{ github.workspace }}/install/deps \
+          --enable-static --disable-shared \
+          --disable-ldap --disable-rtsp --disable-dict --disable-telnet --disable-tftp --disable-pop3 --disable-imap --disable-smtp --disable-gopher --disable-smb
         make -j$(nproc)
         make install
+
+    # 4. Build ZBar
+    - name: Build ZBar 0.23.90 (Latest)
+      run: |
+        cd ${{ github.workspace }}/build
+        wget https://github.com/mchehab/zbar/archive/refs/tags/0.23.90.tar.gz
+        tar xzf 0.23.90.tar.gz
+        cd zbar-0.23.90
+        autoreconf -vfi 
         
+        export LDFLAGS="-L${{ github.workspace }}/install/deps/lib"
+        export CPPFLAGS="-I${{ github.workspace }}/install/deps/include"
+        
+        ./configure \
+          --host=${{ matrix.host }} \
+          --prefix=${{ github.workspace }}/install/zbar \
+          --enable-static --disable-shared \
+          --enable-codes=qrcode,ean,code128 \
+          --without-gtk --without-python --without-qt --without-imagemagick --without-dbus --disable-video
+        make -j$(nproc)
+        make install
+
     - name: Create package
       run: |
         cd ${{ github.workspace }}/install
-        zip -r ../mingw-${{ matrix.arch }}-openssl-curl.zip *
-        
+        zip -r ../mingw-${{ matrix.arch }}-barcode-suite.zip .
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: mingw-${{ matrix.arch }}-openssl-curl
-        path: mingw-${{ matrix.arch }}-openssl-curl.zip
+        name: mingw-${{ matrix.arch }}-barcode-suite
+        path: mingw-${{ matrix.arch }}-barcode-suite.zip
