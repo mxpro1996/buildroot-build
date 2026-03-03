@@ -24,7 +24,17 @@ jobs:
     - name: Install Cross-Compiler
       run: |
         sudo apt-get update
-        sudo apt-get install -y mingw-w64 binutils-mingw-w64 autoconf automake libtool pkg-config make wget unzip
+        sudo apt-get install -y \
+          mingw-w64 \
+          binutils-mingw-w64 \
+          autoconf \
+          automake \
+          libtool \
+          pkg-config \
+          make \
+          wget \
+          unzip \
+          gettext
 
     - name: Create build and install directories
       run: |
@@ -89,7 +99,8 @@ jobs:
         wget https://github.com/mchehab/zbar/archive/refs/tags/0.23.90.tar.gz
         tar xzf 0.23.90.tar.gz
         cd zbar-0.23.90
-        autoreconf -vfi 
+        mkdir -p m4  # 强行创建 m4 目录防止 autopoint 报错
+        autoreconf -vfi
         
         export LDFLAGS="-L${{ github.workspace }}/install/deps/lib"
         export CPPFLAGS="-I${{ github.workspace }}/install/deps/include"
