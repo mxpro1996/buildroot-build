@@ -34,7 +34,8 @@ jobs:
           make \
           wget \
           unzip \
-          gettext
+          gettext \
+          autopoint
 
     - name: Create build and install directories
       run: |
