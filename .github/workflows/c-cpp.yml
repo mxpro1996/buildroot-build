@@ -1,8 +1,6 @@
 name: Buildroot Build (Optimized)
 
 on:
-  push:
-    branches: [ main, master ]
   workflow_dispatch:
     inputs:
       clean_cache:
