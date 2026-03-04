@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-20.04
+    container:
+      image: ubuntu:18.04  # 强行拉取 18.04 镜像
     strategy:
       matrix:
         arch: [i686, x86_64]
