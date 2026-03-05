@@ -1,22 +1,25 @@
-name: Qt6-ARM-CI
+name: Build-Qt6-Everywhere-IMX6ULL
 
-on:
-  workflow_dispatch
+on: 
+  workflow_dispatch:
 
 jobs:
-  build-arm:
+  build-qt6:
     runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+    timeout-minutes: 360 
 
-      - name: Install Build Essentials
+    steps:
+      - name: Maximize Build Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo apt clean
+
+      - name: Install Host Dependencies
         run: |
           sudo apt update
-          sudo apt install -y cmake ninja-build build-essential python3 perl
+          sudo apt install -y cmake ninja-build build-essential python3 perl \
+            libgl1-mesa-dev libx11-dev libxkbcommon-dev libfontconfig1-dev \
+            libdbus-1-dev libudev-dev libgles2-mesa-dev # 编译 GUI 必须的宿主库
 
       - name: Setup Arm Toolchain
         run: |
@@ -24,40 +27,38 @@ jobs:
           curl -L "https://developer.arm.com/-/media/files/downloads/gnu/11.2-2022.02/binrel/gcc-arm-11.2-2022.02-x86_64-arm-none-linux-gnueabihf.tar.xz" | tar -xJ --strip-components=1 -C /opt/gcc-arm-11.2
           echo "/opt/gcc-arm-11.2/bin" >> $GITHUB_PATH
 
-      - name: Create Toolchain File
+      - name: Download Qt 6.5 Source
         run: |
-          cat <<EOF > arm-linux.cmake
-          set(CMAKE_SYSTEM_NAME Linux)
-          set(CMAKE_SYSTEM_PROCESSOR arm)
-          set(TOOLCHAIN_PREFIX /opt/gcc-arm-11.2)
-          set(CMAKE_C_COMPILER \${TOOLCHAIN_PREFIX}/bin/arm-none-linux-gnueabihf-gcc)
-          set(CMAKE_CXX_COMPILER \${TOOLCHAIN_PREFIX}/bin/arm-none-linux-gnueabihf-g++)
-          set(CMAKE_SYSROOT \${TOOLCHAIN_PREFIX}/arm-none-linux-gnueabihf/libc)
-          set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-          set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-          set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-          EOF
+          curl -L "https://download.qt.io/official_releases/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz" -o qt6.tar.xz
+          mkdir qt6-src && tar -xJf qt6.tar.xz -C qt6-src --strip-components=1
 
-      - name: Build QtMqtt for ARM
+      - name: Configure Qt 6
         run: |
-          mkdir build && cd build
-          cmake .. -GNinja \
-            -DCMAKE_TOOLCHAIN_FILE=../arm-linux.cmake \
-            -DCMAKE_BUILD_TYPE=Release
+          mkdir qt6-build && cd qt6-build
+          ../qt-src/configure \
+            -release \
+            -device linux-imx6-g++ \
+            -device-option CROSS_COMPILE=/opt/gcc-arm-11.2/bin/arm-none-linux-gnueabihf- \
+            -sysroot /opt/gcc-arm-11.2/arm-none-linux-gnueabihf/libc \
+            -prefix /usr/local/qt6 \
+            -extprefix ${{ github.workspace }}/qt6-install-root \
+            -opengl es2 \
+            -nomake examples -nomake tests \
+            -skip qtwebengine -skip qt3d -skip qtwayland \
+            -- -GNinja
+
+      - name: Build and Install
+        run: |
+          cd qt6-build
           ninja
+          ninja install
 
-      - name: Install to Mock Root
+      - name: Package Runtime
         run: |
-          cd build
-          dest_dir=${{ github.workspace }}/imx6_root
-          cmake --install . --prefix $dest_dir
-          
-      - name: Archive Root Directory
-        run: |
-          tar -czvf arm-root.tar.gz -C ${{ github.workspace }}/imx6_root .
+          tar -czvf EndStation_Qt6_Runtime_ARM.tar.gz -C ${{ github.workspace }}/qt6-install-root .
 
-      - name: Upload Root Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: IMX6-Root-Filesystem
-          path: arm-root.tar.gz
+          name: Qt6-Everywhere-IMX6-Runtime
+          path: EndStation_Qt6_Runtime_ARM.tar.gz
