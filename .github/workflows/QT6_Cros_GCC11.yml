@@ -21,7 +21,7 @@ jobs:
           ../qt6-src/configure -release \
           -DQT_BUILD_TOOLS_ONLY=ON \
           -prefix ${{ github.workspace }}/host-bin \
-          -- -GNinj
+          -- -GNinja
           ninja && ninja install
       - name: Upload Bootstrap
         uses: actions/upload-artifact@v4
