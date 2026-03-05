@@ -18,7 +18,10 @@ jobs:
       - name: Build Bootstrap Tools
         run: |
           mkdir qt6-host-build && cd qt6-host-build
-          ../qt6-src/configure -release -sdk linux -DQT_BUILD_TOOLS_ONLY=ON -prefix ${{ github.workspace }}/host-bin -- -GNinja
+          ../qt6-src/configure -release \
+          -DQT_BUILD_TOOLS_ONLY=ON \
+          -prefix ${{ github.workspace }}/host-bin \
+          -- -GNinj
           ninja && ninja install
       - name: Upload Bootstrap
         uses: actions/upload-artifact@v4
