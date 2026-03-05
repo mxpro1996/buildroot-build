@@ -1,0 +1,63 @@
+name: Qt6-ARM-CI
+
+on:
+  workflow_dispatch
+
+jobs:
+  build-arm:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Build Essentials
+        run: |
+          sudo apt update
+          sudo apt install -y cmake ninja-build build-essential python3 perl
+
+      - name: Setup Arm Toolchain
+        run: |
+          mkdir -p /opt/gcc-arm-11.2
+          curl -L "https://developer.arm.com/-/media/files/downloads/gnu/11.2-2022.02/binrel/gcc-arm-11.2-2022.02-x86_64-arm-none-linux-gnueabihf.tar.xz" | tar -xJ --strip-components=1 -C /opt/gcc-arm-11.2
+          echo "/opt/gcc-arm-11.2/bin" >> $GITHUB_PATH
+
+      - name: Create Toolchain File
+        run: |
+          cat <<EOF > arm-linux.cmake
+          set(CMAKE_SYSTEM_NAME Linux)
+          set(CMAKE_SYSTEM_PROCESSOR arm)
+          set(TOOLCHAIN_PREFIX /opt/gcc-arm-11.2)
+          set(CMAKE_C_COMPILER \${TOOLCHAIN_PREFIX}/bin/arm-none-linux-gnueabihf-gcc)
+          set(CMAKE_CXX_COMPILER \${TOOLCHAIN_PREFIX}/bin/arm-none-linux-gnueabihf-g++)
+          set(CMAKE_SYSROOT \${TOOLCHAIN_PREFIX}/arm-none-linux-gnueabihf/libc)
+          set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+          set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+          set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+          EOF
+
+      - name: Build QtMqtt for ARM
+        run: |
+          mkdir build && cd build
+          cmake .. -GNinja \
+            -DCMAKE_TOOLCHAIN_FILE=../arm-linux.cmake \
+            -DCMAKE_BUILD_TYPE=Release
+          ninja
+
+      - name: Install to Mock Root
+        run: |
+          cd build
+          dest_dir=${{ github.workspace }}/imx6_root
+          cmake --install . --prefix $dest_dir
+          
+      - name: Archive Root Directory
+        run: |
+          tar -czvf arm-root.tar.gz -C ${{ github.workspace }}/imx6_root .
+
+      - name: Upload Root Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: IMX6-Root-Filesystem
+          path: arm-root.tar.gz
