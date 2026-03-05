@@ -20,6 +20,12 @@ jobs:
           sudo apt install -y cmake ninja-build build-essential python3 perl \
             libgl1-mesa-dev libx11-dev libxkbcommon-dev libfontconfig1-dev \
             libdbus-1-dev libudev-dev libgles2-mesa-dev 
+          sudo apt install -y cmake ninja-build build-essential python3 perl \
+            llvm-17-dev \
+            libclang-17-dev \
+            clang-17 \
+            libpolly-17-dev \
+            libmlir-17-dev
 
       - name: Setup Arm Toolchain
         run: |
@@ -45,7 +51,7 @@ jobs:
             -extprefix ${{ github.workspace }}/qt6-install-root \
             -opengl es2 \
             -nomake examples -nomake tests \
-            -skip qtwebengine -skip qt3d -skip qtwayland -skip qttools -skip qtdoc\
+            -skip qtwebengine -skip qt3d -skip qtwayland \
             -- -GNinja
 
       - name: Build and Install
