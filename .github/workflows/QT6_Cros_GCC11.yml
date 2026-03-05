@@ -10,7 +10,16 @@ jobs:
       - name: Maximize Space
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc && sudo apt clean
       - name: Install Host Tools Deps
-        run: sudo apt update && sudo apt install -y cmake ninja-build build-essential python3 perl
+        run: |
+          sudo apt update
+          sudo apt install -y cmake ninja-build build-essential python3 perl \
+            llvm-17-dev \
+            libclang-17-dev \
+            clang-17 \
+            libpolly-17-dev \
+            libmlir-17-dev
+          
+        
       - name: Download Source
         run: |
           curl -L "https://download.qt.io/official_releases/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz" -o qt6.tar.xz
