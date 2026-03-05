@@ -1,8 +1,6 @@
 name: Build OpenSSL, Curl, Iconv and ZBar for MinGW
 
-on:
-  push:
-    branches: [ master ]
+on:  
   workflow_dispatch:
 
 jobs:
