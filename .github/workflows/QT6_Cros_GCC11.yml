@@ -50,7 +50,7 @@ jobs:
             -prefix /usr/local/qt6 \
             -extprefix ${{ github.workspace }}/qt6-install-root \
             -opengl es2 \
-            -nomake examples -nomake tests \
+            -nomake examples -nomake tests -no-feature-xkbcommon\
             -skip qtwebengine -skip qt3d -skip qtwayland \
             -- -GNinja
 
