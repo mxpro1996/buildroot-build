@@ -1,71 +1,104 @@
-name: Build-Qt6-Everywhere-IMX6ULL
+name: Build-Qt6-Everywhere-Hybrid
 
 on: 
   workflow_dispatch:
 
 jobs:
-  build-qt6:
+  build-bootstrap:
     runs-on: ubuntu-latest
-    timeout-minutes: 360 
-
     steps:
-      - name: Maximize Build Space
+      - name: Maximize Space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc && sudo apt clean
+      - name: Install Host Tools Deps
+        run: sudo apt update && sudo apt install -y cmake ninja-build build-essential python3 perl
+      - name: Download Source
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo apt clean
+          curl -L "https://download.qt.io/official_releases/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz" -o qt6.tar.xz
+          mkdir qt6-src && tar -xJf qt6.tar.xz -C qt6-src --strip-components=1
+      - name: Build Bootstrap Tools
+        run: |
+          mkdir qt6-host-build && cd qt6-host-build
+          ../qt6-src/configure -release -sdk linux -DQT_BUILD_TOOLS_ONLY=ON -prefix ${{ github.workspace }}/host-bin -- -GNinja
+          ninja && ninja install
+      - name: Upload Bootstrap
+        uses: actions/upload-artifact@v4
+        with:
+          name: qt6-bootstrap-tools
+          path: ${{ github.workspace }}/host-bin
 
-      - name: Install Host Dependencies
+  build-qt6:
+    needs: build-bootstrap
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [arm-imx6, win-mingw]
+    steps:
+      - name: Maximize Space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc && sudo apt clean
+      
+      - name: Install Dependencies
         run: |
           sudo apt update
-          sudo apt install -y cmake ninja-build build-essential python3 perl \
-            libgl1-mesa-dev libx11-dev libxkbcommon-dev libfontconfig1-dev \
-            libdbus-1-dev libudev-dev libgles2-mesa-dev 
-          sudo apt install -y cmake ninja-build build-essential python3 perl \
-            llvm-17-dev \
-            libclang-17-dev \
-            clang-17 \
-            libpolly-17-dev \
-            libmlir-17-dev
+          sudo apt install -y cmake ninja-build build-essential python3 perl llvm-17-dev libclang-17-dev clang-17
+          if [ "${{ matrix.target }}" == "win-mingw" ]; then
+            sudo apt install -y g++-mingw-w64 gcc-mingw-w64
+          else
+            sudo apt install -y libgl1-mesa-dev libfontconfig1-dev libdbus-1-dev libudev-dev
+          fi
 
-      - name: Setup Arm Toolchain
+      - name: Download Source & Bootstrap
+        run: |
+          curl -L "https://download.qt.io/official_releases/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz" -o qt6.tar.xz
+          mkdir qt6-src && tar -xJf qt6.tar.xz -C qt6-src --strip-components=1
+          
+      - name: Download Bootstrap Tools
+        uses: actions/download-artifact@v4
+        with:
+          name: qt6-bootstrap-tools
+          path: ${{ github.workspace }}/host-bin
+          
+      - name: Setup Arm Toolchain (Only for ARM)
+        if: matrix.target == 'arm-imx6'
         run: |
           mkdir -p /opt/gcc-arm-11.2
           curl -L "https://developer.arm.com/-/media/files/downloads/gnu/11.2-2022.02/binrel/gcc-arm-11.2-2022.02-x86_64-arm-none-linux-gnueabihf.tar.xz" | tar -xJ --strip-components=1 -C /opt/gcc-arm-11.2
           echo "/opt/gcc-arm-11.2/bin" >> $GITHUB_PATH
 
-      - name: Download Qt 6.5 Source
-        run: |
-          curl -L "https://download.qt.io/official_releases/qt/6.5/6.5.3/single/qt-everywhere-src-6.5.3.tar.xz" -o qt6.tar.xz
-          mkdir qt6-src
-          tar -xJf qt6.tar.xz -C qt6-src --strip-components=1
-
-      - name: Configure Qt 6
+      - name: Configure and Build
         run: |
           mkdir qt6-build && cd qt6-build
-          ../qt6-src/configure \
-            -release \
-            -device linux-imx6-g++ \
-            -device-option CROSS_COMPILE=/opt/gcc-arm-11.2/bin/arm-none-linux-gnueabihf- \
-            -sysroot /opt/gcc-arm-11.2/arm-none-linux-gnueabihf/libc \
-            -prefix /usr/local/qt6 \
-            -extprefix ${{ github.workspace }}/qt6-install-root \
-            -opengl es2 \
-            -nomake examples -nomake tests -no-feature-xkbcommon\
-            -skip qtwebengine -skip qt3d -skip qtwayland \
-            -- -GNinja
+          if [ "${{ matrix.target }}" == "arm-imx6" ]; then
+            ../qt6-src/configure -release -device linux-imx6-g++ \
+              -device-option CROSS_COMPILE=/opt/gcc-arm-11.2/bin/arm-none-linux-gnueabihf- \
+              -sysroot /opt/gcc-arm-11.2/arm-none-linux-gnueabihf/libc \
+              -qt-host-path ${{ github.workspace }}/host-bin \
+              -extprefix ${{ github.workspace }}/install-root \
+              -opengl es2 -nomake examples -nomake tests -no-feature-xkbcommon \
+              -skip qtwebengine -skip qt3d -skip qtwayland -- -GNinja
+          else
+            ../qt6-src/configure -release -xplatform win32-g++ \
+              -qt-host-path ${{ github.workspace }}/host-bin \
+              -prefix ${{ github.workspace }}/install-root \
+              -opengl desktop -nomake examples -nomake tests \
+              -skip qtwebengine -skip qt3d -- -GNinja
+          fi
+          ninja && ninja install
 
-      - name: Build and Install
+      - name: Package & Upload
         run: |
-          cd qt6-build
-          ninja
-          ninja install
-
-      - name: Package Runtime
-        run: |
-          tar -czvf EndStation_Qt6_Runtime_ARM.tar.gz -C ${{ github.workspace }}/qt6-install-root .
+          if [ "${{ matrix.target }}" == "arm-imx6" ]; then
+            tar -czvf Qt6_ARM_IMX6.tar.gz -C ${{ github.workspace }}/install-root .
+            echo "PKG_NAME=Qt6_ARM_IMX6" >> $GITHUB_ENV
+          else
+            zip -r Qt6_Win_MinGW.zip ${{ github.workspace }}/install-root
+            echo "PKG_NAME=Qt6_Win_MinGW" >> $GITHUB_ENV
+          fi
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Qt6-Everywhere-IMX6-Runtime
-          path: EndStation_Qt6_Runtime_ARM.tar.gz
+          name: ${{ env.PKG_NAME }}
+          path: |
+            *.tar.gz
+            *.zip
