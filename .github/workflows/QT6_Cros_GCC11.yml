@@ -13,11 +13,10 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y cmake ninja-build build-essential python3 perl \
-            llvm-17-dev \
-            libclang-17-dev \
-            clang-17 \
-            libpolly-17-dev \
-            libmlir-17-dev
+            llvm-17-dev libclang-17-dev \
+            clang-17 libpolly-17-dev \
+            libmlir-17-dev \
+            libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev
           
         
       - name: Download Source
@@ -51,8 +50,6 @@ jobs:
       
       - name: Install Dependencies
         run: |
-          sudo apt update
-          sudo apt install -y cmake ninja-build build-essential python3 perl llvm-17-dev libclang-17-dev clang-17
           if [ "${{ matrix.target }}" == "win-mingw" ]; then
             sudo apt install -y g++-mingw-w64 gcc-mingw-w64
           else
