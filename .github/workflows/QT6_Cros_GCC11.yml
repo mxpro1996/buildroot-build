@@ -5,7 +5,7 @@ on:
 
 jobs:
   build-bootstrap:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - name: Maximize Space
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc && sudo apt clean
