@@ -45,7 +45,7 @@ jobs:
             -extprefix ${{ github.workspace }}/qt6-install-root \
             -opengl es2 \
             -nomake examples -nomake tests \
-            -skip qtwebengine -skip qt3d -skip qtwayland \
+            -skip qtwebengine -skip qt3d -skip qtwayland -skip qttools \
             -- -GNinja
 
       - name: Build and Install
