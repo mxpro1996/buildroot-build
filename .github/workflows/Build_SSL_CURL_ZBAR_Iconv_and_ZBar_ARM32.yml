@@ -1,0 +1,115 @@
+name: Build OpenSSL, Curl, Iconv and ZBar for Linux ARM32 (Static)
+
+on:  
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Install ARM32 Cross-Compiler
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          gcc-arm-linux-gnueabihf \
+          g++-arm-linux-gnueabihf \
+          binutils-arm-linux-gnueabihf \
+          autoconf automake libtool pkg-config make wget unzip gettext autopoint zip
+
+    - name: Create build and install directories
+      run: |
+        mkdir -p ${{ github.workspace }}/build
+        mkdir -p ${{ github.workspace }}/install/deps
+
+    # 1. Build libiconv (Static)
+    - name: Build libiconv 1.17
+      run: |
+        cd ${{ github.workspace }}/build
+        wget https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.17.tar.gz
+        tar xzf libiconv-1.17.tar.gz
+        cd libiconv-1.17
+        ./configure \
+          --host=arm-linux-gnueabihf \
+          --prefix=${{ github.workspace }}/install/deps \
+          --enable-static --disable-shared --with-pic
+        make -j$(nproc)
+        make install
+
+    # 2. Build OpenSSL 1.1.1 (Real .a)
+    - name: Build OpenSSL 1.1.1
+      run: |
+        cd ${{ github.workspace }}/build
+        wget https://www.openssl.org/source/openssl-1.1.1q.tar.gz
+        tar xzf openssl-1.1.1q.tar.gz
+        cd openssl-1.1.1q
+        
+        ./Configure linux-armv4 \
+          --prefix=${{ github.workspace }}/install/deps \
+          --cross-compile-prefix=arm-linux-gnueabihf- \
+          no-shared no-tests
+          
+        make -j$(nproc)
+        make install_sw
+
+    # 3. Build libcurl (Static Link)
+    - name: Build libcurl 7.85.0
+      run: |
+        cd ${{ github.workspace }}/build
+        wget https://curl.se/download/curl-7.85.0.tar.gz
+        tar xzf curl-7.85.0.tar.gz
+        cd curl-7.85.0
+        
+        export CPPFLAGS="-I${{ github.workspace }}/install/deps/include"
+        export LDFLAGS="-L${{ github.workspace }}/install/deps/lib"
+
+        export LIBS="-lssl -lcrypto -ldl -lpthread"
+        
+        ./configure \
+          --host=arm-linux-gnueabihf \
+          --prefix=${{ github.workspace }}/install/deps \
+          --with-openssl \
+          --with-libiconv-prefix=${{ github.workspace }}/install/deps \
+          --enable-static --disable-shared \
+          --disable-ldap --disable-rtsp --disable-dict --disable-telnet --disable-tftp --disable-pop3 --disable-imap --disable-smtp --disable-gopher --disable-smb
+        make -j$(nproc)
+        make install
+
+    # 4. Build ZBar
+    - name: Build ZBar 0.23.90
+      run: |
+        cd ${{ github.workspace }}/build
+        if [ ! -d "zbar-0.23.90" ]; then
+          wget https://github.com/mchehab/zbar/archive/refs/tags/0.23.90.tar.gz
+          tar xzf 0.23.90.tar.gz
+        fi
+        cd zbar-0.23.90
+        
+        autoreconf -vfi
+        
+        export LDFLAGS="-L${{ github.workspace }}/install/deps/lib"
+        export CPPFLAGS="-I${{ github.workspace }}/install/deps/include"
+        
+        ./configure \
+          --host=arm-linux-gnueabihf \
+          --prefix=${{ github.workspace }}/install/zbar \
+          --enable-static --disable-shared \
+          --enable-codes=qrcode,ean,code128 \
+          --without-gtk --without-python --without-qt --without-imagemagick --without-dbus --disable-video
+        make -j$(nproc)
+        make install
+
+    - name: Verify and Package
+      run: |
+        echo "Verifying static libraries..."
+        find ${{ github.workspace }}/install -name "*.so*" -delete
+        cd ${{ github.workspace }}/install
+        zip -r ../linux-arm32-static-suite.zip .
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-arm32-static-suite
+        path: linux-arm32-static-suite.zip
