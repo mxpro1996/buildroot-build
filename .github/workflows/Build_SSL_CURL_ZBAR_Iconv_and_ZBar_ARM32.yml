@@ -97,6 +97,8 @@ jobs:
           --disable-pop3 \
           --disable-imap \
           --disable-smtp \
+          --without-brotli \
+          --without-zstd \
           --disable-gopher \
           --disable-smb \
           --without-zlib
