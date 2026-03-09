@@ -10,21 +10,59 @@ jobs:
     env:
       PREFIX: ${{ github.workspace }}/install
       TOOLCHAIN: arm-linux-gnueabihf
-      MAKEFLAGS: -j$(nproc)
 
     steps:
 
-    - name: Install toolchain
+    ############################################################
+    # Download Linaro Toolchain
+    ############################################################
+
+    - name: Download Linaro GCC
+      run: |
+        wget https://developer.arm.com/-/cdn-downloads/permalink/legacy-linaro-gnu-toolchains/7.5-2019.12/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabihf.tar.xz
+        tar xf gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabihf.tar.xz
+
+    - name: Setup toolchain env
+      run: |
+        echo "TOOLCHAIN_DIR=$PWD/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabihf" >> $GITHUB_ENV
+
+    ############################################################
+    # Install build tools
+    ############################################################
+
+    - name: Install build deps
       run: |
         sudo apt update
         sudo apt install -y \
-          gcc-arm-linux-gnueabihf \
-          g++-arm-linux-gnueabihf \
-          binutils-arm-linux-gnueabihf \
           autoconf automake libtool pkg-config \
           make wget unzip gettext autopoint
 
-    - name: Prepare directories
+    ############################################################
+    # Setup PATH
+    ############################################################
+
+    - name: Setup PATH
+      run: |
+        echo "$TOOLCHAIN_DIR/bin" >> $GITHUB_PATH
+
+    ############################################################
+    # Export compiler
+    ############################################################
+
+    - name: Export cross compile tools
+      run: |
+        echo "CC=arm-linux-gnueabihf-gcc" >> $GITHUB_ENV
+        echo "CXX=arm-linux-gnueabihf-g++" >> $GITHUB_ENV
+        echo "AR=arm-linux-gnueabihf-ar" >> $GITHUB_ENV
+        echo "LD=arm-linux-gnueabihf-ld" >> $GITHUB_ENV
+        echo "RANLIB=arm-linux-gnueabihf-ranlib" >> $GITHUB_ENV
+        echo "STRIP=arm-linux-gnueabihf-strip" >> $GITHUB_ENV
+
+    ############################################################
+    # Prepare dirs
+    ############################################################
+
+    - name: Prepare dirs
       run: |
         mkdir -p $PREFIX
 
@@ -42,10 +80,9 @@ jobs:
           --host=$TOOLCHAIN \
           --prefix=$PREFIX \
           --enable-static \
-          --disable-shared \
-          --with-pic
+          --disable-shared
 
-        make
+        make -j$(nproc)
         make install
 
     ############################################################
@@ -58,13 +95,13 @@ jobs:
         tar xf openssl-1.1.1w.tar.gz
         cd openssl-1.1.1w
 
-        ./Configure linux-generic32 \
+        ./Configure linux-armv4 \
           --prefix=$PREFIX \
-          --cross-compile-prefix=$TOOLCHAIN- \
+          --cross-compile-prefix=arm-linux-gnueabihf- \
           no-shared \
           no-tests
 
-        make
+        make -j$(nproc)
         make install_sw
 
     ############################################################
@@ -89,6 +126,9 @@ jobs:
           --with-openssl \
           --enable-static \
           --disable-shared \
+          --without-brotli \
+          --without-zstd \
+          --without-zlib \
           --disable-ldap \
           --disable-rtsp \
           --disable-dict \
@@ -97,17 +137,14 @@ jobs:
           --disable-pop3 \
           --disable-imap \
           --disable-smtp \
-          --without-brotli \
-          --without-zstd \
           --disable-gopher \
-          --disable-smb \
-          --without-zlib
+          --disable-smb
 
-        make
+        make -j$(nproc)
         make install
 
     ############################################################
-    # zbar
+    # ZBar
     ############################################################
 
     - name: Build ZBar
@@ -122,8 +159,9 @@ jobs:
         export CPPFLAGS="-I$PREFIX/include"
         export LDFLAGS="-L$PREFIX/lib"
         export LIBS="-liconv"
+
         ./configure \
-          --host=arm-linux-gnueabihf \
+          --host=$TOOLCHAIN \
           --prefix=$PREFIX \
           --enable-static \
           --disable-shared \
@@ -137,24 +175,24 @@ jobs:
           --without-dbus \
           --enable-codes=qrcode,ean,code128
 
-        make
+        make -j$(nproc)
         make install
 
     ############################################################
-    # package
+    # Package
     ############################################################
 
-    - name: Strip shared libs
+    - name: Remove shared libs
       run: |
         find $PREFIX -name "*.so*" -delete
 
     - name: Package
       run: |
         cd $PREFIX
-        tar czf ../arm32-static-libs.tar.gz .
+        tar czf ../arm32-static-sdk.tar.gz .
 
-    - name: Upload artifact
+    - name: Upload
       uses: actions/upload-artifact@v4
       with:
-        name: arm32-static-libs
-        path: arm32-static-libs.tar.gz
+        name: arm32-static-sdk
+        path: arm32-static-sdk.tar.gz
