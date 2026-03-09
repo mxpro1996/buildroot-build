@@ -122,18 +122,20 @@ jobs:
         export CPPFLAGS="-I$PREFIX/include"
         export LDFLAGS="-L$PREFIX/lib"
         export LIBS="-liconv"
-
         ./configure \
-          --host=$TOOLCHAIN \
+          --host=arm-linux-gnueabihf \
           --prefix=$PREFIX \
           --enable-static \
           --disable-shared \
+          --disable-video \
+          --without-x \
+          --without-xshm \
           --without-gtk \
-          --without-python \
           --without-qt \
+          --without-python \
           --without-imagemagick \
           --without-dbus \
-          --disable-video
+          --enable-codes=qrcode,ean,code128
 
         make
         make install
