@@ -51,12 +51,13 @@ jobs:
 
     - name: Export cross compile tools
       run: |
-        echo "CC=arm-linux-gnueabihf-gcc" >> $GITHUB_ENV
-        echo "CXX=arm-linux-gnueabihf-g++" >> $GITHUB_ENV
-        echo "AR=arm-linux-gnueabihf-ar" >> $GITHUB_ENV
-        echo "LD=arm-linux-gnueabihf-ld" >> $GITHUB_ENV
-        echo "RANLIB=arm-linux-gnueabihf-ranlib" >> $GITHUB_ENV
-        echo "STRIP=arm-linux-gnueabihf-strip" >> $GITHUB_ENV
+        echo "Bypassed"
+        # echo "CC=arm-linux-gnueabihf-gcc" >> $GITHUB_ENV
+        # echo "CXX=arm-linux-gnueabihf-g++" >> $GITHUB_ENV
+        # echo "AR=arm-linux-gnueabihf-ar" >> $GITHUB_ENV
+        # echo "LD=arm-linux-gnueabihf-ld" >> $GITHUB_ENV
+        # echo "RANLIB=arm-linux-gnueabihf-ranlib" >> $GITHUB_ENV
+        # echo "STRIP=arm-linux-gnueabihf-strip" >> $GITHUB_ENV
 
     ############################################################
     # Prepare dirs
