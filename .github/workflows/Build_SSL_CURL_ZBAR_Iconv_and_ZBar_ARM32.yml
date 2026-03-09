@@ -54,7 +54,6 @@ jobs:
         make -j$(nproc)
         make install_sw
 
-    # 3. Build libcurl (Static Link)
     - name: Build libcurl 7.85.0
       run: |
         cd ${{ github.workspace }}/build
@@ -64,16 +63,19 @@ jobs:
         
         export CPPFLAGS="-I${{ github.workspace }}/install/deps/include"
         export LDFLAGS="-L${{ github.workspace }}/install/deps/lib"
-
+        
         export LIBS="-lssl -lcrypto -ldl -lpthread"
         
         ./configure \
           --host=arm-linux-gnueabihf \
           --prefix=${{ github.workspace }}/install/deps \
-          --with-openssl \
+          --with-openssl=${{ github.workspace }}/install/deps \
           --with-libiconv-prefix=${{ github.workspace }}/install/deps \
-          --enable-static --disable-shared \
+          --enable-static \
+          --disable-shared \
+          --disable-pthreads \
           --disable-ldap --disable-rtsp --disable-dict --disable-telnet --disable-tftp --disable-pop3 --disable-imap --disable-smtp --disable-gopher --disable-smb
+        
         make -j$(nproc)
         make install
 
