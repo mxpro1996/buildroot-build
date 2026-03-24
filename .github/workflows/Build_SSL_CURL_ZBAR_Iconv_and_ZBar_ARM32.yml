@@ -180,6 +180,32 @@ jobs:
         make install
 
     ############################################################
+    # alsa-lib
+    ############################################################
+    - name: Build alsa-lib
+      run: |
+        wget https://www.alsa-project.org/files/pub/lib/alsa-lib-1.2.11.tar.bz2
+        tar xf alsa-lib-1.2.11.tar.bz2
+        cd alsa-lib-1.2.11
+        
+        export PATH=$TOOLCHAIN_DIR/bin:$PATH
+        
+        ./configure \
+          --host=$TOOLCHAIN \
+          --prefix=$PREFIX \
+          --enable-static \
+          --disable-shared \
+          --disable-python \
+          --with-debug=no \
+          --with-softfloat \
+          --disable-topology \
+          --disable-ucm \
+          --disable-alisp
+          
+        make -j$(nproc)
+        make install        
+
+    ############################################################
     # Package
     ############################################################
 
